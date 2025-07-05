@@ -3,7 +3,7 @@ import { config } from './config';
 
 // API Configuration
 const API_BASE_URL = config.api.baseUrl;
-const TOKEN_KEY = 'auth_token';
+const TOKEN_KEY = 'auth_token'; // Changed to match auth service
 
 // Types
 export interface User {
@@ -86,6 +86,56 @@ export interface CreateLoanData {
   borrowerId: string;
 }
 
+export interface Installment {
+  _id: string;
+  amount: number;
+  dueDate: string;
+  status: 'PENDING' | 'PAID' | 'OVERDUE' | 'PARTIAL';
+  loanId: string;
+  installmentNumber: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Collection {
+  _id: string;
+  amount: number;
+  paymentDate: string;
+  gpsLat?: number;
+  gpsLng?: number;
+  notes?: string;
+  installmentId: string;
+  collectorId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCollectionData {
+  amount: number;
+  paymentDate: string;
+  gpsLat?: number;
+  gpsLng?: number;
+  notes?: string;
+  installmentId: string;
+  collectorId: string;
+}
+
+export interface PopulatedCollection extends Omit<Collection, 'installmentId' | 'collectorId'> {
+  installmentId: {
+    _id: string;
+    installmentNumber: number;
+    dueDate: string;
+    status: string;
+    amount: number;
+  };
+  collectorId: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+}
+
 // API Service Class
 class ApiService {
   private token: string | null = null;
@@ -93,6 +143,13 @@ class ApiService {
   // Initialize token from storage
   async initialize() {
     this.token = await AsyncStorage.getItem(TOKEN_KEY);
+    console.log('API Service - Initialized with token:', this.token ? 'Present' : 'Missing');
+  }
+
+  // Refresh token from storage (useful when token is updated by auth service)
+  async refreshToken() {
+    this.token = await AsyncStorage.getItem(TOKEN_KEY);
+    console.log('API Service - Token refreshed:', this.token ? 'Present' : 'Missing');
   }
 
   // Get auth headers
@@ -102,10 +159,14 @@ class ApiService {
       'Accept': 'application/json',
     };
     
+    console.log('API Service - Current token:', this.token ? 'Present' : 'Missing');
+    console.log('API Service - Token value:', this.token);
+    
     if (this.token) {
       headers.Authorization = `Bearer ${this.token}`;
     }
     
+    console.log('API Service - Final headers:', headers);
     return headers;
   }
 
@@ -121,6 +182,10 @@ class ApiService {
       ...options,
     };
 
+    console.log('API Request - URL:', url);
+    console.log('API Request - Method:', options.method || 'GET');
+    console.log('API Request - Body:', options.body);
+
     try {
       // Add timeout
       const controller = new AbortController();
@@ -133,10 +198,17 @@ class ApiService {
       
       clearTimeout(timeoutId);
       
+      console.log('API Response - Status:', response.status);
+      console.log('API Response - OK:', response.ok);
+      
       const data = await response.json();
+      console.log('API Response - Data:', data);
       
       if (!response.ok) {
-        throw new Error(data.error || `HTTP ${response.status}`);
+        const errorMessage = data.error || data.message || `HTTP ${response.status}`;
+        const error = new Error(errorMessage);
+        (error as any).status = response.status;
+        throw error;
       }
       
       return data;
@@ -145,7 +217,10 @@ class ApiService {
       
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
-          throw new Error('Request timeout');
+          throw new Error('Request timeout - server not responding');
+        }
+        if (error.message.includes('Network request failed')) {
+          throw new Error('Network request failed - check if server is running and API URL is correct');
         }
       }
       
@@ -247,10 +322,17 @@ class ApiService {
   }
 
   async createLoan(data: CreateLoanData): Promise<ApiResponse<Loan>> {
-    return this.request<Loan>('/loans', {
+    console.log('API Service - Creating loan with data:', data);
+    console.log('API Service - Request URL:', `${API_BASE_URL}/loans`);
+    console.log('API Service - Headers:', this.getHeaders());
+    
+    const response = await this.request<Loan>('/loans', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+    
+    console.log('API Service - Response received:', response);
+    return response;
   }
 
   async updateLoan(id: string, data: Partial<CreateLoanData>): Promise<ApiResponse<Loan>> {
@@ -263,6 +345,60 @@ class ApiService {
   // Dashboard Stats
   async getDashboardStats(): Promise<ApiResponse<any>> {
     return this.request<any>('/dashboard/stats');
+  }
+
+  // Installments
+  async getInstallments(loanId: string): Promise<ApiResponse<Installment[]>> {
+    return this.request<Installment[]>(`/loans/${loanId}/installments`);
+  }
+
+  async getInstallment(id: string): Promise<ApiResponse<Installment>> {
+    return this.request<Installment>(`/installments/${id}`);
+  }
+
+  // Collections
+  async getCollections(params?: {
+    page?: number;
+    limit?: number;
+    collectorId?: string;
+    installmentId?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<ApiResponse<PopulatedCollection[]>> {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.append('page', params.page.toString());
+    if (params?.limit) searchParams.append('limit', params.limit.toString());
+    if (params?.collectorId) searchParams.append('collectorId', params.collectorId);
+    if (params?.installmentId) searchParams.append('installmentId', params.installmentId);
+    if (params?.startDate) searchParams.append('startDate', params.startDate);
+    if (params?.endDate) searchParams.append('endDate', params.endDate);
+    
+    const endpoint = `/collections${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
+    return this.request<PopulatedCollection[]>(endpoint);
+  }
+
+  async getCollection(id: string): Promise<ApiResponse<PopulatedCollection>> {
+    return this.request<PopulatedCollection>(`/collections/${id}`);
+  }
+
+  async createCollection(data: CreateCollectionData): Promise<ApiResponse<PopulatedCollection>> {
+    return this.request<PopulatedCollection>('/collections', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateCollection(id: string, data: Partial<CreateCollectionData>): Promise<ApiResponse<PopulatedCollection>> {
+    return this.request<PopulatedCollection>(`/collections/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCollection(id: string): Promise<ApiResponse<{ message: string }>> {
+    return this.request<{ message: string }>(`/collections/${id}`, {
+      method: 'DELETE',
+    });
   }
 
   // Check if user is authenticated

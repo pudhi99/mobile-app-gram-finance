@@ -158,7 +158,7 @@ export default function LoansScreen() {
   };
 
   const handleAddLoan = () => {
-    router.push('/loan/new');
+    router.push('/loan/new' as any);
   };
 
   const handleLoanPress = (loan: Loan) => {
@@ -196,8 +196,11 @@ export default function LoansScreen() {
     return `₹${amount.toLocaleString()}`;
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-IN');
+  const formatDate = (dateString: string | undefined | null) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Invalid Date';
+    return date.toLocaleDateString('en-IN');
   };
 
   const stats = {
@@ -224,23 +227,21 @@ export default function LoansScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text }]}>Loans</Text>
-        <TouchableOpacity
-          style={[styles.addButton, { backgroundColor: theme.primary }]}
-          onPress={handleAddLoan}
-        >
-          <Ionicons name="add" size={24} color={theme.buttonText} />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView 
-        style={styles.content} 
+      <ScrollView
+        style={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
       >
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: theme.text }]}>Loans</Text>
+          <TouchableOpacity
+            style={[styles.addButton, { backgroundColor: theme.primary }]}
+            onPress={handleAddLoan}
+          >
+            <Ionicons name="add" size={24} color={theme.buttonText} />
+          </TouchableOpacity>
+        </View>
+
         {/* Stats Cards */}
         <View style={styles.statsContainer}>
           <View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -296,10 +297,10 @@ export default function LoansScreen() {
                 ]}
                 onPress={() => setStatusFilter(filter.key as any)}
               >
-                <Ionicons 
-                  name={filter.icon as any} 
-                  size={16} 
-                  color={statusFilter === filter.key ? theme.buttonText : theme.textSecondary} 
+                <Ionicons
+                  name={filter.icon as any}
+                  size={16}
+                  color={statusFilter === filter.key ? theme.buttonText : theme.textSecondary}
                 />
                 <Text style={[
                   styles.filterText,
@@ -321,7 +322,7 @@ export default function LoansScreen() {
                 {searchQuery || statusFilter !== 'all' ? 'No loans found' : 'No loans yet'}
               </Text>
               <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
-                {searchQuery || statusFilter !== 'all' 
+                {searchQuery || statusFilter !== 'all'
                   ? 'Try adjusting your search or filters'
                   : 'Create the first loan for your borrowers'
                 }
@@ -376,7 +377,7 @@ export default function LoansScreen() {
                       </Text>
                     </View>
                   </View>
-                  
+
                   <View style={styles.detailRow}>
                     <View style={styles.detailItem}>
                       <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Term</Text>
@@ -411,18 +412,27 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 24,
+    marginBottom: 20,
     paddingHorizontal: 20,
-    paddingVertical: 16,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
   },
   addButton: {
-    padding: 12,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   loadingContainer: {
     flex: 1,

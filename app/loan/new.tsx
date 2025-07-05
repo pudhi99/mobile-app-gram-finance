@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { router } from 'expo-router';
 import { apiService, Borrower as ApiBorrower, CreateLoanData } from '@/lib/api';
+import { config } from '@/lib/config';
 
 interface Borrower {
   id: string;
@@ -123,17 +124,53 @@ export default function NewLoanScreen() {
       return;
     }
 
+    // Check if user is authenticated
+    if (!apiService.isAuthenticated()) {
+      Alert.alert('Error', 'You are not logged in. Please log in and try again.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
+      // Validate data before sending
+      const principalAmount = parseFloat(formData.principalAmount);
+      const disbursedAmount = parseFloat(formData.disbursedAmount);
+      const termWeeks = parseInt(formData.termWeeks);
+
+      if (isNaN(principalAmount) || principalAmount <= 0) {
+        Alert.alert('Error', 'Please enter a valid principal amount');
+        return;
+      }
+
+      if (isNaN(disbursedAmount) || disbursedAmount <= 0) {
+        Alert.alert('Error', 'Please enter a valid disbursed amount');
+        return;
+      }
+
+      if (isNaN(termWeeks) || termWeeks <= 0) {
+        Alert.alert('Error', 'Please enter a valid loan term');
+        return;
+      }
+
       const loanData: CreateLoanData = {
         borrowerId: formData.borrowerId,
-        principalAmount: parseFloat(formData.principalAmount),
-        disbursedAmount: parseFloat(formData.disbursedAmount),
-        termWeeks: parseInt(formData.termWeeks),
+        principalAmount,
+        disbursedAmount,
+        termWeeks,
         startDate: formData.startDate,
       };
 
+      console.log('Creating loan with data:', loanData);
+      console.log('API URL:', `${config.api.baseUrl}/loans`);
+      console.log('Auth token:', apiService.getToken() ? 'Present' : 'Missing');
+
+      // Refresh token before making API call
+      await apiService.refreshToken();
+      console.log('Auth token after refresh:', apiService.getToken() ? 'Present' : 'Missing');
+
       const response = await apiService.createLoan(loanData);
+      console.log('API Response:', response);
+      
       if (response.success) {
         Alert.alert(
           'Success',
@@ -146,11 +183,32 @@ export default function NewLoanScreen() {
           ]
         );
       } else {
+        console.error('API Error:', response.error);
         Alert.alert('Error', response.error || 'Failed to create loan');
       }
     } catch (error) {
       console.error('Error creating loan:', error);
-      Alert.alert('Error', 'Failed to create loan. Please try again.');
+      let errorMessage = 'Failed to create loan. Please try again.';
+      
+      if (error instanceof Error) {
+        console.error('Error details:', {
+          message: error.message,
+          name: error.name,
+          stack: error.stack
+        });
+        
+        if (error.message.includes('timeout')) {
+          errorMessage = 'Request timed out. Please check your connection and try again.';
+        } else if (error.message.includes('401')) {
+          errorMessage = 'Authentication failed. Please log in again.';
+        } else if (error.message.includes('400')) {
+          errorMessage = 'Invalid data provided. Please check your inputs.';
+        } else if (error.message.includes('500')) {
+          errorMessage = 'Server error. Please try again later.';
+        }
+      }
+      
+      Alert.alert('Error', errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -174,16 +232,19 @@ export default function NewLoanScreen() {
   };
 
   const formatCurrency = (amount: string) => {
+    if (!amount || amount.trim() === '') return '';
     const num = parseFloat(amount);
-    if (isNaN(num)) return '';
-    return num.toLocaleString();
+    if (isNaN(num) || num <= 0) return '';
+    return num.toLocaleString('en-IN');
   };
 
   const formatCurrencyInput = (value: string) => {
     // Remove all non-digit characters
     const digits = value.replace(/\D/g, '');
     if (digits === '') return '';
-    return parseInt(digits).toLocaleString();
+    const num = parseInt(digits);
+    if (isNaN(num) || num <= 0) return '';
+    return num.toLocaleString('en-IN');
   };
 
   const handleCurrencyChange = (field: 'principalAmount' | 'disbursedAmount', value: string) => {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
@@ -84,28 +84,9 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.welcomeText, { color: theme.text }]}>
-            Welcome back!
-          </Text>
-          <Text style={[styles.userName, { color: theme.textSecondary }]}>
-            {user?.name || 'User'}
-          </Text>
-        </View>
-        <View style={styles.headerActions}>
-          <ThemeSwitcher />
-          <TouchableOpacity
-            style={[styles.logoutButton, { backgroundColor: theme.error }]}
-            onPress={handleLogout}
-          >
-            <Ionicons name="log-out" size={20} color={theme.buttonText} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.content}>
-        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <Text style={{ fontSize: 24, fontWeight: 'bold', color: theme.text, marginTop: 16, marginBottom: 16 }}>Dashboard</Text>
+        <View style={styles.card}>
           <Ionicons name="business" size={40} color={theme.primary} />
           <Text style={[styles.cardTitle, { color: theme.text }]}>
             Village Lending Dashboard
@@ -149,7 +130,7 @@ export default function DashboardScreen() {
             </>
           )}
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }

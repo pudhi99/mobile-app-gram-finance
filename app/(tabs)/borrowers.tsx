@@ -137,7 +137,7 @@ export default function BorrowersScreen() {
   };
 
   const handleAddBorrower = () => {
-    router.push('/borrower/new');
+    router.push('/borrower/new' as any);
   };
 
   const handleBorrowerPress = (borrower: Borrower) => {
@@ -164,23 +164,21 @@ export default function BorrowersScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text }]}>Borrowers</Text>
-        <TouchableOpacity
-          style={[styles.addButton, { backgroundColor: theme.primary }]}
-          onPress={handleAddBorrower}
-        >
-          <Ionicons name="add" size={24} color={theme.buttonText} />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView 
-        style={styles.content} 
+      <ScrollView
+        style={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
       >
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: theme.text }]}>Borrowers</Text>
+          <TouchableOpacity
+            style={[styles.addButton, { backgroundColor: theme.primary }]}
+            onPress={handleAddBorrower}
+          >
+            <Ionicons name="add" size={24} color={theme.buttonText} />
+          </TouchableOpacity>
+        </View>
+
         {/* Stats Cards */}
         <View style={styles.statsContainer}>
           <View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -343,8 +341,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginTop: 24,
+    marginBottom: 20,
     paddingHorizontal: 20,
-    paddingVertical: 16,
   },
   title: {
     fontSize: 24,

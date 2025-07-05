@@ -3,7 +3,7 @@ export const config = {
   // API Configuration
   api: {
     // Development - Update this to your local IP address when testing on device
-    // baseUrl: 'http://192.168.1.100:3000/api',
+    // baseUrl: 'http://localhost:3000/api',
     
     // Production - Update this when deploying
     baseUrl: 'https://web-portal-gram-finance.vercel.app/api',

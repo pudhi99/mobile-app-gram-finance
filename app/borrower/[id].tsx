@@ -214,22 +214,6 @@ export default function BorrowerDetailsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: theme.text }]}>Borrower Details</Text>
-        <TouchableOpacity
-          style={styles.editButton}
-          onPress={handleEditBorrower}
-        >
-          <Ionicons name="create" size={24} color={theme.primary} />
-        </TouchableOpacity>
-      </View>
-
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Borrower Profile */}
         <View style={[styles.profileCard, { backgroundColor: theme.card, borderColor: theme.border }]}>

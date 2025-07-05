@@ -131,7 +131,7 @@ export default function LoanDetailsScreen() {
 
   const handleRecordPayment = () => {
     // Navigate to payment collection screen
-    router.push(`/loan/${id}/payment` as any);
+    router.push(`/collection/new?loanId=${id}` as any);
   };
 
   const handleEditLoan = () => {
@@ -261,22 +261,6 @@ export default function LoanDetailsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: theme.text }]}>Loan Details</Text>
-        <TouchableOpacity
-          style={styles.editButton}
-          onPress={handleEditLoan}
-        >
-          <Ionicons name="create" size={24} color={theme.primary} />
-        </TouchableOpacity>
-      </View>
-
       <ScrollView 
         style={styles.content} 
         showsVerticalScrollIndicator={false}

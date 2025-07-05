@@ -75,6 +75,9 @@ export class AuthService {
         // Store user data locally
         await Storage.setItem('user_data', JSON.stringify(user));
         
+        // Refresh API service token
+        await apiService.refreshToken();
+        
         console.log('AuthService: Login successful, user stored:', user);
         
         return {
@@ -96,9 +99,25 @@ export class AuthService {
       
       // For testing purposes, if we get a network error, try with mock data
       console.log('AuthService: Using mock data due to network error');
+      
+      // Create a simple JWT token for testing
+      const mockJwtPayload = {
+        id: credentials.username,
+        username: credentials.username,
+        role: "COLLECTOR",
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7 days
+      };
+      
+      // Simple JWT encoding (for testing only)
+      const mockJwtHeader = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+      const mockJwtPayloadEncoded = btoa(JSON.stringify(mockJwtPayload));
+      const mockJwtSignature = btoa('mock_signature_for_testing');
+      const mockToken = `${mockJwtHeader}.${mockJwtPayloadEncoded}.${mockJwtSignature}`;
+      
       const mockData = {
         success: true,
-        token: "mock_token_for_testing",
+        token: mockToken,
         user: {
           id: credentials.username,
           username: credentials.username,
@@ -113,6 +132,9 @@ export class AuthService {
       
       await Storage.setItem('auth_token', token);
       await Storage.setItem('user_data', JSON.stringify(user));
+      
+      // Refresh API service token
+      await apiService.refreshToken();
       
       return {
         success: true,
