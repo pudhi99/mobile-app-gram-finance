@@ -1,50 +1,150 @@
-# Welcome to your Expo app 👋
+# GramFinance Mobile App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A React Native Expo mobile application for village lending operations management.
 
-## Get started
+## Features Implemented
 
-1. Install dependencies
+### 🔐 Authentication System
+- **Beautiful Login Screen** with fluid animations
+- **Light/Dark Theme** support with automatic switching
+- **Fingerprint Authentication** for quick login
+- **Secure Token Storage** using Expo SecureStore
+- **Auto-login** for authenticated users
 
+### 🎨 UI/UX Features
+- **Smooth Animations** using React Native Reanimated
+- **Responsive Design** that works on all screen sizes
+- **Modern Card-based Layout** with shadows and borders
+- **Icon Integration** using Expo Vector Icons
+- **Loading States** and error handling
+
+### 🔧 Technical Features
+- **TypeScript** for type safety
+- **Context API** for state management
+- **Expo Router** for navigation
+- **Theme System** with consistent colors
+- **Biometric Authentication** support
+
+## Setup Instructions
+
+### Prerequisites
+- Node.js (v18 or higher)
+- Expo CLI
+- Android Studio / Xcode (for device testing)
+
+### Installation
+
+1. **Install Dependencies**
    ```bash
+   cd mobile-app
    npm install
    ```
 
-2. Start the app
-
+2. **Install Additional Dependencies** (if not already installed)
    ```bash
-   npx expo start
+   npm install expo-local-authentication expo-secure-store @react-native-async-storage/async-storage
    ```
 
-In the output, you'll find options to open the app in a
+3. **Configure API URL**
+   - Open `lib/auth.ts`
+   - Update `API_BASE_URL` to point to your web portal
+   - Default: `http://localhost:3000/api`
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+4. **Start Development Server**
+   ```bash
+   npm start
+   ```
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Project Structure
 
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+mobile-app/
+├── app/
+│   ├── _layout.tsx          # Root layout with auth provider
+│   ├── index.tsx            # Initial routing logic
+│   ├── login.tsx            # Beautiful login screen
+│   └── (tabs)/
+│       └── index.tsx        # Dashboard screen
+├── components/
+│   └── AuthGuard.tsx        # Authentication guard component
+├── contexts/
+│   └── AuthContext.tsx      # Authentication context
+├── lib/
+│   ├── auth.ts              # Authentication service
+│   ├── biometrics.ts        # Biometric authentication
+│   └── theme.ts             # Theme system
+└── README.md
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Authentication Flow
 
-## Learn more
+1. **App Launch**: Checks for stored authentication token
+2. **If Authenticated**: Redirects to dashboard
+3. **If Not Authenticated**: Shows login screen
+4. **Login Options**:
+   - Username/Password login
+   - Fingerprint login (if enabled)
+5. **After Login**: Stores token securely and redirects to dashboard
 
-To learn more about developing your project with Expo, look at the following resources:
+## Theme System
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+The app supports both light and dark themes with:
+- **Automatic switching** based on system preference
+- **Consistent color palette** across all components
+- **Smooth transitions** between themes
+- **Accessibility-friendly** color contrasts
 
-## Join the community
+## Biometric Authentication
 
-Join our community of developers creating universal apps.
+- **Automatic detection** of device capabilities
+- **Secure credential storage** using Expo SecureStore
+- **Fallback to password** if biometric fails
+- **User-friendly prompts** and error handling
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## API Integration
+
+The mobile app connects to the web portal APIs:
+- **Login**: `POST /api/auth/login`
+- **Token Management**: Secure storage and refresh
+- **User Data**: Profile information and role-based access
+
+## Next Steps
+
+1. **Dashboard Implementation**: Add real data from APIs
+2. **Borrower Management**: CRUD operations for borrowers
+3. **Loan Management**: Create and track loans
+4. **Collection System**: Record payments with GPS
+5. **Offline Support**: Local database for poor connectivity
+6. **Push Notifications**: Collection reminders
+
+## Development Notes
+
+- **TypeScript**: All components are fully typed
+- **Error Handling**: Comprehensive error states and user feedback
+- **Performance**: Optimized animations and efficient re-renders
+- **Security**: Secure token storage and biometric authentication
+- **Accessibility**: Proper contrast ratios and touch targets
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Biometric not working**: Ensure device has fingerprint/face ID set up
+2. **API connection failed**: Check API_BASE_URL in auth.ts
+3. **Animation issues**: Ensure react-native-reanimated is properly configured
+4. **Theme not switching**: Check useColorScheme hook implementation
+
+### Debug Mode
+
+Run with debug logging:
+```bash
+EXPO_DEBUG=true npm start
+```
+
+## Contributing
+
+1. Follow TypeScript best practices
+2. Maintain consistent theming
+3. Add proper error handling
+4. Test on both iOS and Android
+5. Ensure accessibility compliance
