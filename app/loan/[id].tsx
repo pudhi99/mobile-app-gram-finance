@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { router, useLocalSearchParams } from 'expo-router';
-import { apiService, Loan as ApiLoan } from '@/lib/api';
+import { apiService, Loan as ApiLoan, PopulatedCollection } from '@/lib/api';
 
 interface Loan {
   id: string;
@@ -37,6 +37,8 @@ interface Payment {
   date: string;
   type: 'INSTALLMENT' | 'EXTRA';
   notes?: string;
+  installmentNumber?: number;
+  collectorName?: string;
 }
 
 export default function LoanDetailsScreen() {
@@ -44,6 +46,7 @@ export default function LoanDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [loan, setLoan] = useState<Loan | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [calculatedTotalPaid, setCalculatedTotalPaid] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -75,8 +78,8 @@ export default function LoanDetailsScreen() {
         };
         setLoan(convertedLoan);
         
-        // Load mock payments for now (will be replaced with API)
-        loadMockPayments();
+        // Load real payment history
+        await loadPaymentHistory();
       } else {
         Alert.alert('Error', 'Failed to load loan details');
       }
@@ -88,39 +91,43 @@ export default function LoanDetailsScreen() {
     }
   };
 
-  const loadMockPayments = () => {
-    // Mock payment data - will be replaced with API call
-    const mockPayments: Payment[] = [
-      {
-        id: '1',
-        amount: 5000,
-        date: '2024-01-15',
-        type: 'INSTALLMENT',
-        notes: 'Weekly payment',
-      },
-      {
-        id: '2',
-        amount: 5000,
-        date: '2024-01-22',
-        type: 'INSTALLMENT',
-        notes: 'Weekly payment',
-      },
-      {
-        id: '3',
-        amount: 3000,
-        date: '2024-01-29',
-        type: 'EXTRA',
-        notes: 'Extra payment',
-      },
-      {
-        id: '4',
-        amount: 5000,
-        date: '2024-02-05',
-        type: 'INSTALLMENT',
-        notes: 'Weekly payment',
-      },
-    ];
-    setPayments(mockPayments);
+  const loadPaymentHistory = async () => {
+    try {
+      const collectionsResponse = await apiService.getCollectionsByLoan(id);
+      if (collectionsResponse.success) {
+        const convertedPayments: Payment[] = collectionsResponse.data.map((collection: PopulatedCollection) => ({
+          id: collection._id,
+          amount: collection.amount || 0,
+          date: collection.paymentDate || new Date().toISOString(),
+          type: 'INSTALLMENT',
+          notes: collection.notes,
+          installmentNumber: collection.installmentId?.installmentNumber,
+          collectorName: collection.collectorId?.name,
+        }));
+        setPayments(convertedPayments);
+        
+        // Calculate total paid from actual payment history
+        const actualTotalPaid = convertedPayments.reduce((sum, payment) => sum + payment.amount, 0);
+        setCalculatedTotalPaid(actualTotalPaid);
+        
+        // Update loan data with calculated total paid and outstanding amount
+        if (loan) {
+          setLoan(prevLoan => prevLoan ? {
+            ...prevLoan,
+            totalPaid: actualTotalPaid,
+            outstandingAmount: Math.max(0, prevLoan.principalAmount - actualTotalPaid)
+          } : null);
+        }
+      } else {
+        console.log('No payment history found or error loading payments');
+        setPayments([]);
+        setCalculatedTotalPaid(0);
+      }
+    } catch (error) {
+      console.error('Error loading payment history:', error);
+      setPayments([]);
+      setCalculatedTotalPaid(0);
+    }
   };
 
   const onRefresh = async () => {
@@ -220,7 +227,8 @@ export default function LoanDetailsScreen() {
   const calculateProgress = () => {
     if (!loan) return 0;
     const total = loan.principalAmount || 0;
-    const paid = loan.totalPaid || 0;
+    // Use calculated total paid from payment history instead of loan.totalPaid
+    const paid = calculatedTotalPaid || loan.totalPaid || 0;
     if (total === 0) return 0;
     return Math.min((paid / total) * 100, 100);
   };
@@ -308,7 +316,7 @@ export default function LoanDetailsScreen() {
               />
             </View>
             <Text style={[styles.progressText, { color: theme.textSecondary }]}>
-              {formatCurrency(loan.totalPaid)} of {formatCurrency(loan.principalAmount)} paid
+              {formatCurrency(calculatedTotalPaid)} of {formatCurrency(loan.principalAmount)} paid
             </Text>
           </View>
         </View>
@@ -357,13 +365,13 @@ export default function LoanDetailsScreen() {
             </View>
             <View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <Text style={[styles.statNumber, { color: theme.warning }]}>
-                {formatCurrency(loan.outstandingAmount)}
+                {formatCurrency(Math.max(0, loan.principalAmount - calculatedTotalPaid))}
               </Text>
               <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Outstanding</Text>
             </View>
             <View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <Text style={[styles.statNumber, { color: theme.success }]}>
-                {formatCurrency(loan.totalPaid)}
+                {formatCurrency(calculatedTotalPaid)}
               </Text>
               <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Paid</Text>
             </View>
@@ -470,15 +478,23 @@ export default function LoanDetailsScreen() {
                           : theme.warning 
                       }
                     ]}>
-                      {payment.type === 'INSTALLMENT' ? 'Installment' : 'Extra'}
+                      {payment.installmentNumber ? `#${payment.installmentNumber}` : payment.type === 'INSTALLMENT' ? 'Installment' : 'Extra'}
                     </Text>
                   </View>
                 </View>
-                {payment.notes && (
-                  <Text style={[styles.paymentNotes, { color: theme.textSecondary }]}>
-                    {payment.notes}
-                  </Text>
-                )}
+                
+                <View style={styles.paymentDetails}>
+                  {payment.collectorName && (
+                    <Text style={[styles.paymentCollector, { color: theme.textSecondary }]}>
+                      Collected by: {payment.collectorName}
+                    </Text>
+                  )}
+                  {payment.notes && (
+                    <Text style={[styles.paymentNotes, { color: theme.textSecondary }]}>
+                      {payment.notes}
+                    </Text>
+                  )}
+                </View>
               </View>
             ))
           )}
@@ -732,6 +748,13 @@ const styles = StyleSheet.create({
   paymentTypeText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  paymentDetails: {
+    marginTop: 8,
+  },
+  paymentCollector: {
+    fontSize: 12,
+    marginBottom: 4,
   },
   paymentNotes: {
     fontSize: 14,

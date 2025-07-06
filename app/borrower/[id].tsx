@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Image, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Image, ActivityIndicator, Platform, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { router, useLocalSearchParams } from 'expo-router';
-import { apiService, Borrower as ApiBorrower } from '@/lib/api';
+import { apiService, Borrower as ApiBorrower, Loan as ApiLoan } from '@/lib/api';
 import { LocationData } from '@/lib/location';
 
 interface Borrower {
@@ -22,13 +22,14 @@ interface Borrower {
 
 interface Loan {
   id: string;
-  amount: number;
-  status: 'active' | 'completed' | 'overdue';
-  startDate: string;
-  endDate: string;
+  loanNumber: string;
+  principalAmount: number;
+  disbursedAmount: number;
   outstandingAmount: number;
   totalPaid: number;
-  lastPayment: string;
+  status: 'ACTIVE' | 'COMPLETED' | 'DEFAULTED';
+  startDate: string;
+  createdAt: string;
 }
 
 export default function BorrowerDetailsScreen() {
@@ -37,41 +38,7 @@ export default function BorrowerDetailsScreen() {
   const [borrower, setBorrower] = useState<Borrower | null>(null);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  // Mock data
-  const mockBorrower: Borrower = {
-    id: '1',
-    name: 'Ramesh Kumar',
-    phone: '+91 98765 43210',
-    village: 'Village A',
-    address: 'House No. 123, Main Street, Village A, District - 123456',
-    aadharNumber: '1234 5678 9012',
-    status: 'active',
-    joinedDate: '2023-06-15',
-  };
-
-  const mockLoans: Loan[] = [
-    {
-      id: '1',
-      amount: 50000,
-      status: 'active',
-      startDate: '2024-01-01',
-      endDate: '2024-06-30',
-      outstandingAmount: 25000,
-      totalPaid: 25000,
-      lastPayment: '2024-01-15',
-    },
-    {
-      id: '2',
-      amount: 30000,
-      status: 'completed',
-      startDate: '2023-07-01',
-      endDate: '2023-12-31',
-      outstandingAmount: 0,
-      totalPaid: 30000,
-      lastPayment: '2023-12-15',
-    },
-  ];
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     loadBorrowerData();
@@ -100,21 +67,50 @@ export default function BorrowerDetailsScreen() {
             } : undefined,
           };
           setBorrower(convertedBorrower);
+          
+          // Load real loan history
+          await loadLoanHistory();
         } else {
-          // Fallback to mock data
-          setBorrower(mockBorrower);
+          Alert.alert('Error', 'Failed to load borrower details');
         }
-      } else {
-        setBorrower(mockBorrower);
       }
-      setLoans(mockLoans); // Keep mock loans for now
     } catch (error) {
       console.error('Error loading borrower:', error);
-      // Fallback to mock data
-      setBorrower(mockBorrower);
-      setLoans(mockLoans);
+      Alert.alert('Error', 'Failed to load borrower details');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setIsRefreshing(true);
+    await loadBorrowerData();
+    setIsRefreshing(false);
+  };
+
+  const loadLoanHistory = async () => {
+    try {
+      const loansResponse = await apiService.getLoansByBorrower(id);
+      if (loansResponse.success) {
+        const convertedLoans: Loan[] = loansResponse.data.map((apiLoan: ApiLoan) => ({
+          id: apiLoan._id,
+          loanNumber: apiLoan.loanNumber || 'N/A',
+          principalAmount: apiLoan.principalAmount || 0,
+          disbursedAmount: apiLoan.disbursedAmount || 0,
+          outstandingAmount: apiLoan.outstandingAmount || 0,
+          totalPaid: apiLoan.totalPaid || 0,
+          status: apiLoan.status || 'ACTIVE',
+          startDate: apiLoan.startDate || new Date().toISOString(),
+          createdAt: apiLoan.createdAt || new Date().toISOString(),
+        }));
+        setLoans(convertedLoans);
+      } else {
+        console.log('No loan history found or error loading loans');
+        setLoans([]);
+      }
+    } catch (error) {
+      console.error('Error loading loan history:', error);
+      setLoans([]);
     }
   };
 
@@ -164,9 +160,9 @@ export default function BorrowerDetailsScreen() {
 
   const getLoanStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return theme.primary;
-      case 'completed': return theme.success;
-      case 'overdue': return theme.error;
+      case 'ACTIVE': return theme.primary;
+      case 'COMPLETED': return theme.success;
+      case 'DEFAULTED': return theme.error;
       default: return theme.textSecondary;
     }
   };
@@ -181,7 +177,7 @@ export default function BorrowerDetailsScreen() {
 
   const stats = {
     totalLoans: loans.length,
-    activeLoans: loans.filter(loan => loan.status === 'active').length,
+    activeLoans: loans.filter(loan => loan.status === 'ACTIVE').length,
     totalOutstanding: loans.reduce((sum, loan) => sum + loan.outstandingAmount, 0),
     totalPaid: loans.reduce((sum, loan) => sum + loan.totalPaid, 0),
   };
@@ -214,7 +210,18 @@ export default function BorrowerDetailsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            colors={[theme.primary]}
+            tintColor={theme.primary}
+          />
+        }
+      >
         {/* Borrower Profile */}
         <View style={[styles.profileCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={styles.profileHeader}>
@@ -371,14 +378,18 @@ export default function BorrowerDetailsScreen() {
             </View>
           ) : (
             loans.map((loan) => (
-              <View key={loan.id} style={[styles.loanCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <TouchableOpacity
+                key={loan.id}
+                style={[styles.loanCard, { backgroundColor: theme.card, borderColor: theme.border }]}
+                onPress={() => router.push(`/loan/${loan.id}` as any)}
+              >
                 <View style={styles.loanHeader}>
                   <View style={styles.loanInfo}>
                     <Text style={[styles.loanAmount, { color: theme.text }]}>
-                      {formatCurrency(loan.amount)}
+                      {formatCurrency(loan.principalAmount)}
                     </Text>
                     <Text style={[styles.loanDates, { color: theme.textSecondary }]}>
-                      {formatDate(loan.startDate)} - {formatDate(loan.endDate)}
+                      {formatDate(loan.startDate)}
                     </Text>
                   </View>
                   <View style={[styles.loanStatus, { backgroundColor: getLoanStatusColor(loan.status) + '20' }]}>
@@ -402,13 +413,13 @@ export default function BorrowerDetailsScreen() {
                     </Text>
                   </View>
                   <View style={styles.loanStat}>
-                    <Text style={[styles.loanStatLabel, { color: theme.textSecondary }]}>Last Payment</Text>
+                    <Text style={[styles.loanStatLabel, { color: theme.textSecondary }]}>Loan Number</Text>
                     <Text style={[styles.loanStatValue, { color: theme.textSecondary }]}>
-                      {formatDate(loan.lastPayment)}
+                      {loan.loanNumber}
                     </Text>
                   </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </View>

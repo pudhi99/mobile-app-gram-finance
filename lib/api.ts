@@ -127,6 +127,7 @@ export interface PopulatedCollection extends Omit<Collection, 'installmentId' | 
     dueDate: string;
     status: string;
     amount: number;
+    loanId: string; // Added loanId to PopulatedCollection
   };
   collectorId: {
     _id: string;
@@ -375,6 +376,60 @@ class ApiService {
     
     const endpoint = `/collections${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
     return this.request<PopulatedCollection[]>(endpoint);
+  }
+
+  async getCollectionsByLoan(loanId: string): Promise<ApiResponse<PopulatedCollection[]>> {
+    try {
+      // First, get all installments for this loan
+      const installmentsResponse = await this.getInstallments(loanId);
+      if (!installmentsResponse.success) {
+        return { success: false, data: [], error: 'Failed to get installments' };
+      }
+
+      const installmentIds = installmentsResponse.data.map(inst => inst._id);
+      if (installmentIds.length === 0) {
+        return { success: true, data: [] };
+      }
+
+      // Get collections for each installment individually but with better error handling
+      const allCollections: PopulatedCollection[] = [];
+      
+      // Use Promise.all to fetch all collections in parallel for better performance
+      const collectionPromises = installmentIds.map(async (installmentId) => {
+        try {
+          const response = await this.getCollections({ installmentId, limit: 50 });
+          return response.success ? response.data : [];
+        } catch (error) {
+          console.error(`Error fetching collections for installment ${installmentId}:`, error);
+          return [];
+        }
+      });
+
+      const collectionResults = await Promise.all(collectionPromises);
+      
+      // Flatten all collections into a single array
+      collectionResults.forEach(collections => {
+        allCollections.push(...collections);
+      });
+      
+      // Sort by payment date (newest first)
+      allCollections.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
+      
+      return { success: true, data: allCollections };
+    } catch (error) {
+      console.error('Error getting collections by loan:', error);
+      return { success: false, data: [], error: 'Failed to get collections' };
+    }
+  }
+
+  async getLoansByBorrower(borrowerId: string): Promise<ApiResponse<Loan[]>> {
+    // Get all loans and filter by borrower
+    const response = await this.getLoans();
+    if (response.success) {
+      const borrowerLoans = response.data.filter(loan => loan.borrower._id === borrowerId);
+      return { success: true, data: borrowerLoans };
+    }
+    return { success: false, data: [], error: 'Failed to get loans' };
   }
 
   async getCollection(id: string): Promise<ApiResponse<PopulatedCollection>> {

@@ -226,7 +226,7 @@ export default function CollectionsScreen() {
           <Text style={[styles.title, { color: theme.text }]}>Collections</Text>
           <TouchableOpacity
             style={[styles.addButton, { backgroundColor: theme.primary }]}
-            onPress={() => router.push('/collection/new' as any)}
+            onPress={() => router.push('/collection/select-loan' as any)}
           >
             <Ionicons name="add" size={24} color={theme.buttonText} />
           </TouchableOpacity>

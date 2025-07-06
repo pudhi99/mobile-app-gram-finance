@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeContext } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { router, useLocalSearchParams } from 'expo-router';
 import { apiService, Installment as ApiInstallment, CreateCollectionData } from '@/lib/api';
 import * as Location from 'expo-location';
@@ -36,6 +37,7 @@ interface CollectionForm {
 
 export default function NewCollectionScreen() {
   const { theme } = useThemeContext();
+  const { user } = useAuth();
   const params = useLocalSearchParams();
   const loanId = params.loanId as string;
   
@@ -135,6 +137,11 @@ export default function NewCollectionScreen() {
       return;
     }
 
+    if (!user?.id) {
+      Alert.alert('Error', 'User not authenticated. Please login again.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const collectionData: CreateCollectionData = {
@@ -142,7 +149,7 @@ export default function NewCollectionScreen() {
         amount: parseFloat(formData.amount),
         paymentDate: formData.paymentDate,
         notes: formData.notes,
-        collectorId: 'current-user-id', // This should come from auth context
+        collectorId: user.id, // Use the authenticated user's ID
         gpsLat: formData.gpsLat,
         gpsLng: formData.gpsLng,
       };
