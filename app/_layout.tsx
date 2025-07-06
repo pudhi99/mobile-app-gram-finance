@@ -23,15 +23,18 @@ export default function RootLayout() {
       <ThemeProvider>
         <NavigationThemeProvider value={DefaultTheme}>
           <Stack>
-                      <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="login" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="profile" options={{ headerShown: false }} />
-          <Stack.Screen name="theme-settings" options={{ headerShown: false }} />
-          <Stack.Screen name="notifications" options={{ headerShown: false }} />
-          <Stack.Screen name="about" options={{ headerShown: false }} />
-          <Stack.Screen name="borrower" options={{ headerShown: false }} />
-          <Stack.Screen name="+not-found" />
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="login" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="profile" options={{ headerShown: false }} />
+            <Stack.Screen name="theme-settings" options={{ headerShown: false }} />
+            <Stack.Screen name="notifications" options={{ headerShown: false }} />
+            <Stack.Screen name="about" options={{ headerShown: false }} />
+            <Stack.Screen name="borrower" options={{ headerShown: false }} />
+            <Stack.Screen name="collection" options={{ headerShown: false }} />
+            <Stack.Screen name="loan" options={{ headerShown: false }} />
+            <Stack.Screen name="backup" options={{ headerShown: false }} />
+            <Stack.Screen name="+not-found" options={{ headerShown: false }} />
           </Stack>
           <StatusBar style="auto" />
         </NavigationThemeProvider>

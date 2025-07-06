@@ -8,31 +8,19 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { router } from 'expo-router';
-import { apiService, PopulatedCollection as ApiCollection } from '@/lib/api';
+import { apiService, Loan } from '@/lib/api';
 
-interface Collection {
-  _id: string;
-  amount: number;
-  paymentDate: string;
-  notes?: string;
-  installmentId: {
-    _id: string;
-    installmentNumber: number;
-    dueDate: string;
-    status: string;
-    amount: number;
-  };
-  collectorId: {
-    _id: string;
-    name: string;
-    email: string;
-  };
-  createdAt: string;
+interface TodayRoute {
+  loans: Loan[];
+  borrowers: { [borrowerId: string]: any };
+  totalOutstanding: number;
+  totalLoans: number;
 }
 
 interface CollectionStats {
@@ -44,7 +32,12 @@ interface CollectionStats {
 
 export default function CollectionsScreen() {
   const { theme } = useThemeContext();
-  const [collections, setCollections] = useState<Collection[]>([]);
+  const [todayRoute, setTodayRoute] = useState<TodayRoute>({
+    loans: [],
+    borrowers: {},
+    totalOutstanding: 0,
+    totalLoans: 0,
+  });
   const [stats, setStats] = useState<CollectionStats>({
     totalCollected: 0,
     totalCollections: 0,
@@ -53,94 +46,43 @@ export default function CollectionsScreen() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'today' | 'week' | 'month'>('all');
+  const [selectedDay, setSelectedDay] = useState<string>('today');
 
   useEffect(() => {
-    loadCollections();
-  }, [filterStatus]);
+    loadTodayRoute();
+  }, []);
 
-  const loadCollections = async () => {
+  const loadTodayRoute = async () => {
     try {
       setIsLoading(true);
+      const response = await apiService.getTodayCollectionRoute();
       
-      // Calculate date range based on filter
-      let startDate: string | undefined;
-      const now = new Date();
-      
-      switch (filterStatus) {
-        case 'today':
-          startDate = now.toISOString().split('T')[0];
-          break;
-        case 'week':
-          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          startDate = weekAgo.toISOString().split('T')[0];
-          break;
-        case 'month':
-          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          startDate = monthAgo.toISOString().split('T')[0];
-          break;
-      }
-
-      const response = await apiService.getCollections({
-        startDate,
-        limit: 50,
-      });
-
       if (response.success) {
-        const convertedCollections: Collection[] = response.data.map((collection: ApiCollection) => ({
-          _id: collection._id || '',
-          amount: collection.amount || 0,
-          paymentDate: collection.paymentDate || new Date().toISOString(),
-          notes: collection.notes,
-          installmentId: {
-            _id: collection.installmentId?._id || '',
-            installmentNumber: collection.installmentId?.installmentNumber || 0,
-            dueDate: collection.installmentId?.dueDate || new Date().toISOString(),
-            status: collection.installmentId?.status || 'PENDING',
-            amount: collection.installmentId?.amount || 0,
-          },
-          collectorId: {
-            _id: collection.collectorId?._id || '',
-            name: collection.collectorId?.name || 'Unknown',
-            email: collection.collectorId?.email || '',
-          },
-          createdAt: collection.createdAt || new Date().toISOString(),
-        }));
-
-        setCollections(convertedCollections);
-        calculateStats(convertedCollections);
+        setTodayRoute(response.data);
+        calculateStats(response.data);
       } else {
-        Alert.alert('Error', 'Failed to load collections');
+        Alert.alert('Error', 'Failed to load today\'s collection route');
       }
     } catch (error) {
-      console.error('Error loading collections:', error);
-      Alert.alert('Error', 'Failed to load collections');
+      console.error('Error loading today\'s route:', error);
+      Alert.alert('Error', 'Failed to load collection route');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const calculateStats = (collectionsData: Collection[]) => {
-    const totalCollected = collectionsData.reduce((sum, collection) => sum + collection.amount, 0);
-    const totalCollections = collectionsData.length;
-    
-    const today = new Date().toISOString().split('T')[0];
-    const todayCollections = collectionsData.filter(
-      collection => collection.paymentDate.startsWith(today)
-    ).length;
-
+  const calculateStats = (routeData: TodayRoute) => {
     setStats({
-      totalCollected,
-      totalCollections,
-      todayCollections,
-      pendingInstallments: 0, // This would need to be calculated from installments API
+      totalCollected: 0, // This would need to be calculated from today's collections
+      totalCollections: 0,
+      todayCollections: 0,
+      pendingInstallments: routeData.totalLoans,
     });
   };
 
   const onRefresh = async () => {
     setIsRefreshing(true);
-    await loadCollections();
+    await loadTodayRoute();
     setIsRefreshing(false);
   };
 
@@ -153,62 +95,97 @@ export default function CollectionsScreen() {
     });
   };
 
-  const formatDate = (dateString: string | undefined | null) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return 'Invalid Date';
-    return date.toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
+  const getTodayName = () => {
+    const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+    return today;
+  };
+
+  const handleCollectPayment = (loan: Loan) => {
+    // Navigate to collection form with loan pre-selected
+    router.push({
+      pathname: '/collection/new',
+      params: { loanId: loan._id, borrowerName: loan.borrower.name }
     });
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'PAID':
-        return theme.success;
-      case 'PENDING':
-        return theme.warning;
-      case 'OVERDUE':
-        return theme.error;
-      default:
-        return theme.textMuted;
-    }
+  const handleViewLoanDetails = (loan: Loan) => {
+    router.push(`/loan/${loan._id}`);
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'PAID':
-        return 'checkmark-circle';
-      case 'PENDING':
-        return 'time';
-      case 'OVERDUE':
-        return 'warning';
-      default:
-        return 'help-circle';
-    }
+  const handleViewBorrowerDetails = (borrowerId: string) => {
+    router.push(`/borrower/${borrowerId}`);
   };
 
-  const filteredCollections = collections.filter(collection => {
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      return (
-        collection.installmentId.installmentNumber.toString().includes(query) ||
-        collection.collectorId.name.toLowerCase().includes(query) ||
-        collection.notes?.toLowerCase().includes(query)
-      );
-    }
-    return true;
-  });
+  const renderLoanCard = ({ item: loan }: { item: Loan }) => {
+    const borrower = todayRoute.borrowers[loan.borrower._id];
+    
+    return (
+      <View style={[styles.loanCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <View style={styles.loanHeader}>
+          <View style={styles.loanInfo}>
+            <Text style={[styles.borrowerName, { color: theme.text }]}>
+              {loan.borrower.name}
+            </Text>
+            <Text style={[styles.loanNumber, { color: theme.textSecondary }]}>
+              Loan #{loan.loanNumber}
+            </Text>
+            <Text style={[styles.loanAmount, { color: theme.textSecondary }]}>
+              Outstanding: {formatCurrency(loan.outstandingAmount)}
+            </Text>
+          </View>
+          <View style={styles.loanActions}>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: theme.primary }]}
+              onPress={() => handleCollectPayment(loan)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="cash" size={16} color={theme.buttonText} />
+              <Text style={[styles.actionButtonText, { color: theme.buttonText }]}>
+                Collect
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: theme.info }]}
+              onPress={() => handleViewLoanDetails(loan)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="eye" size={16} color={theme.buttonText} />
+              <Text style={[styles.actionButtonText, { color: theme.buttonText }]}>
+                View
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        
+        <View style={styles.collectionDays}>
+          <Text style={[styles.collectionDaysLabel, { color: theme.textSecondary }]}>
+            Collection Days:
+          </Text>
+          <View style={styles.daysContainer}>
+            {loan.collectionDays?.map((day, index) => (
+              <View key={index} style={[styles.dayChip, { backgroundColor: theme.primary + '20' }]}>
+                <Text style={[styles.dayText, { color: theme.primary }]}>
+                  {day.charAt(0).toUpperCase() + day.slice(1)}
+                </Text>
+              </View>
+            )) || (
+              <Text style={[styles.noDaysText, { color: theme.textMuted }]}>
+                No collection days set
+              </Text>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  };
 
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.primary} />
-          <Text style={[styles.loadingText, { color: theme.text }]}>
-            Loading collections...
+          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
+            Loading today's collection route...
           </Text>
         </View>
       </SafeAreaView>
@@ -216,153 +193,142 @@ export default function CollectionsScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}> 
-      <ScrollView
-        style={styles.content}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <View style={styles.header}>
+        <Text style={[styles.title, { color: theme.text }]}>Weekly Collections</Text>
+        <TouchableOpacity
+          style={[styles.addButton, { backgroundColor: theme.primary }]}
+          onPress={() => router.push('/collection/new')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add" size={20} color={theme.buttonText} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView 
+        style={styles.content} 
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+        }
       >
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>Collections</Text>
-          <TouchableOpacity
-            style={[styles.addButton, { backgroundColor: theme.primary }]}
-            onPress={() => router.push('/collection/select-loan' as any)}
-          >
-            <Ionicons name="add" size={24} color={theme.buttonText} />
-          </TouchableOpacity>
+        {/* Today's Route Header */}
+        <View style={[styles.todayHeader, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View style={styles.todayInfo}>
+            <Ionicons name="calendar" size={24} color={theme.primary} />
+            <View style={styles.todayText}>
+              <Text style={[styles.todayTitle, { color: theme.text }]}>
+                Today's Collection Route
+              </Text>
+              <Text style={[styles.todayDate, { color: theme.textSecondary }]}>
+                {getTodayName()}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.todayStats}>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, { color: theme.text }]}>
+                {Object.keys(todayRoute.borrowers).length}
+              </Text>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
+                Borrowers
+              </Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, { color: theme.text }]}>
+                {todayRoute.totalLoans}
+              </Text>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
+                Loans
+              </Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, { color: theme.text }]}>
+                {formatCurrency(todayRoute.totalOutstanding)}
+              </Text>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
+                Outstanding
+              </Text>
+            </View>
+          </View>
         </View>
 
-        {/* Stats Cards */}
+        {/* Collection Stats */}
         <View style={styles.statsContainer}>
-          <View style={[styles.statCard, { backgroundColor: theme.card }]}>
-            <View style={[styles.statIcon, { backgroundColor: theme.primary + '20' }]}>
-              <Ionicons name="cash" size={20} color={theme.primary} />
-            </View>
-            <View style={styles.statContent}>
-              <Text style={[styles.statValue, { color: theme.text }]}>
-                {formatCurrency(stats.totalCollected)}
-              </Text>
-              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
-                Total Collected
-              </Text>
-            </View>
+          <View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Ionicons name="cash" size={24} color={theme.success} />
+            <Text style={[styles.statCardNumber, { color: theme.text }]}>
+              {formatCurrency(stats.totalCollected)}
+            </Text>
+            <Text style={[styles.statCardLabel, { color: theme.textSecondary }]}>
+              Today Collected
+            </Text>
           </View>
-
-          <View style={[styles.statCard, { backgroundColor: theme.card }]}>
-            <View style={[styles.statIcon, { backgroundColor: theme.success + '20' }]}>
-              <Ionicons name="checkmark-circle" size={20} color={theme.success} />
-            </View>
-            <View style={styles.statContent}>
-              <Text style={[styles.statValue, { color: theme.text }]}>
-                {stats.totalCollections}
-              </Text>
-              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
-                Total Collections
-              </Text>
-            </View>
-          </View>
-
-          <View style={[styles.statCard, { backgroundColor: theme.card }]}>
-            <View style={[styles.statIcon, { backgroundColor: theme.warning + '20' }]}>
-              <Ionicons name="today" size={20} color={theme.warning} />
-            </View>
-            <View style={styles.statContent}>
-              <Text style={[styles.statValue, { color: theme.text }]}>
-                {stats.todayCollections}
-              </Text>
-              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
-                Today
-              </Text>
-            </View>
+          <View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Ionicons name="people" size={24} color={theme.info} />
+            <Text style={[styles.statCardNumber, { color: theme.text }]}>
+              {stats.todayCollections}
+            </Text>
+            <Text style={[styles.statCardLabel, { color: theme.textSecondary }]}>
+              Collections Made
+            </Text>
           </View>
         </View>
 
-        {/* Filter Tabs */}
-        <View style={styles.filterContainer}>
-          {(['all', 'today', 'week', 'month'] as const).map((filter) => (
-            <TouchableOpacity
-              key={filter}
-              style={[
-                styles.filterTab,
-                {
-                  backgroundColor: filterStatus === filter ? theme.primary : theme.card,
-                  borderColor: theme.border,
-                }
-              ]}
-              onPress={() => setFilterStatus(filter)}
-            >
-              <Text
-                style={[
-                  styles.filterText,
-                  {
-                    color: filterStatus === filter ? theme.buttonText : theme.text,
-                  }
-                ]}
-              >
-                {filter.charAt(0).toUpperCase() + filter.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Collections List */}
-        <View style={styles.collectionsContainer}>
+        {/* Today's Loans */}
+        <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>
-            Recent Collections ({filteredCollections.length})
+            Today's Collection List ({todayRoute.totalLoans} loans)
           </Text>
-
-          {filteredCollections.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="cash-outline" size={48} color={theme.textMuted} />
-              <Text style={[styles.emptyText, { color: theme.textMuted }]}>
-                No collections found
+          
+          {todayRoute.loans.length === 0 ? (
+            <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Ionicons name="checkmark-circle" size={48} color={theme.success} />
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                No Collections Today
               </Text>
-              <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
-                Start collecting payments to see them here
+              <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
+                All loans for today have been collected or there are no collections scheduled.
               </Text>
             </View>
           ) : (
-            filteredCollections.map((collection) => (
-              <TouchableOpacity
-                key={collection._id}
-                style={[styles.collectionCard, { backgroundColor: theme.card }]}
-                onPress={() => router.push(`/collection/${collection._id}` as any)}
-              >
-                <View style={styles.collectionHeader}>
-                  <View style={styles.collectionInfo}>
-                    <Text style={[styles.collectionAmount, { color: theme.text }]}>
-                      {formatCurrency(collection.amount)}
-                    </Text>
-                    <Text style={[styles.collectionDate, { color: theme.textSecondary }]}>
-                      {formatDate(collection.paymentDate)}
-                    </Text>
-                  </View>
-                  <View style={styles.collectionStatus}>
-                    <Ionicons
-                      name={getStatusIcon(collection.installmentId.status)}
-                      size={20}
-                      color={getStatusColor(collection.installmentId.status)}
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.collectionDetails}>
-                  <Text style={[styles.installmentInfo, { color: theme.textSecondary }]}>
-                    Installment #{collection.installmentId.installmentNumber}
-                  </Text>
-                  <Text style={[styles.collectorInfo, { color: theme.textSecondary }]}>
-                    Collected by {collection.collectorId.name}
-                  </Text>
-                </View>
-
-                {collection.notes && (
-                  <Text style={[styles.notes, { color: theme.textSecondary }]}>
-                    {collection.notes}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            ))
+            <FlatList
+              data={todayRoute.loans}
+              renderItem={renderLoanCard}
+              keyExtractor={(item) => item._id}
+              scrollEnabled={false}
+              showsVerticalScrollIndicator={false}
+            />
           )}
+        </View>
+
+        {/* Quick Actions */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>
+            Quick Actions
+          </Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: theme.card, borderColor: theme.border }]}
+              onPress={() => router.push('/collection/schedule')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="calendar-outline" size={24} color={theme.primary} />
+              <Text style={[styles.quickActionText, { color: theme.text }]}>
+                Weekly Schedule
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: theme.card, borderColor: theme.border }]}
+              onPress={() => router.push('/collection/history')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="time-outline" size={24} color={theme.info} />
+              <Text style={[styles.quickActionText, { color: theme.text }]}>
+                Collection History
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -375,27 +341,21 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 24,
-    marginBottom: 20,
+    alignItems: 'center',
     paddingHorizontal: 20,
+    paddingVertical: 16,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
   },
   addButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  addButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
   },
   content: {
     flex: 1,
@@ -403,12 +363,54 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
+  },
+  todayHeader: {
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  todayInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  todayText: {
+    marginLeft: 12,
+  },
+  todayTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  todayDate: {
+    fontSize: 14,
+    marginTop: 2,
+  },
+  todayStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  statLabel: {
+    fontSize: 12,
+    marginTop: 2,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -417,107 +419,135 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    marginHorizontal: 4,
     padding: 16,
     borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  statCardNumber: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 8,
+  },
+  statCardLabel: {
+    fontSize: 12,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  emptyState: {
+    padding: 40,
+    borderRadius: 16,
+    borderWidth: 1,
     alignItems: 'center',
   },
-  statIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 16,
     marginBottom: 8,
   },
-  statContent: {
-    alignItems: 'center',
+  emptySubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
-  statValue: {
+  loanCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  loanHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  loanInfo: {
+    flex: 1,
+  },
+  borrowerName: {
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 4,
   },
-  statLabel: {
+  loanNumber: {
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  loanAmount: {
     fontSize: 12,
   },
-  filterContainer: {
+  loanActions: {
     flexDirection: 'row',
-    marginBottom: 24,
+    gap: 8,
   },
-  filterTab: {
-    flex: 1,
-    paddingVertical: 8,
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 12,
-    marginHorizontal: 2,
+    paddingVertical: 6,
     borderRadius: 8,
+    gap: 4,
+  },
+  actionButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  collectionDays: {
+    marginTop: 8,
+  },
+  collectionDaysLabel: {
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  daysContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  dayChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  dayText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  noDaysText: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  quickAction: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
   },
-  filterText: {
+  quickActionText: {
     fontSize: 14,
-    fontWeight: '500',
-  },
-  collectionsContainer: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
     fontWeight: '600',
-    marginBottom: 16,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
     marginTop: 8,
     textAlign: 'center',
-  },
-  collectionCard: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  collectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  collectionInfo: {
-    flex: 1,
-  },
-  collectionAmount: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  collectionDate: {
-    fontSize: 14,
-  },
-  collectionStatus: {
-    alignItems: 'center',
-  },
-  collectionDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  installmentInfo: {
-    fontSize: 14,
-  },
-  collectorInfo: {
-    fontSize: 14,
-  },
-  notes: {
-    fontSize: 14,
-    fontStyle: 'italic',
   },
 }); 

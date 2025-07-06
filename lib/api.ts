@@ -44,6 +44,9 @@ export interface Borrower {
   householdHead?: string;
   isActive: boolean;
   collectionDays: string[];
+  loansCount?: number;
+  totalOutstanding?: number;
+  lastCollection?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -62,6 +65,7 @@ export interface Loan {
   };
   outstandingAmount: number;
   totalPaid: number;
+  collectionDays: string[]; // Collection days for this specific loan
   createdAt: string;
 }
 
@@ -84,6 +88,7 @@ export interface CreateLoanData {
   termWeeks: number;
   startDate: string;
   borrowerId: string;
+  collectionDays: string[]; // Collection days for this specific loan
 }
 
 export interface Installment {
@@ -135,6 +140,18 @@ export interface PopulatedCollection extends Omit<Collection, 'installmentId' | 
     email: string;
     phone?: string;
   };
+}
+
+export interface Payment {
+  id: string;
+  loanId: string;
+  amount: number;
+  paymentDate: string;
+  collectorName: string;
+  collectorId: string;
+  status: 'PENDING' | 'COMPLETED' | 'FAILED';
+  notes?: string;
+  createdAt: string;
 }
 
 // API Service Class
@@ -378,6 +395,104 @@ class ApiService {
     return this.request<PopulatedCollection[]>(endpoint);
   }
 
+  // Weekly Collection Management
+  async getLoansByCollectionDay(collectionDay: string): Promise<ApiResponse<Loan[]>> {
+    // Use backend filtering by collection day
+    const searchParams = new URLSearchParams();
+    searchParams.append('collectionDay', collectionDay);
+    
+    const endpoint = `/loans?${searchParams.toString()}`;
+    return this.request<Loan[]>(endpoint);
+  }
+
+  async getTodayCollectionRoute(): Promise<ApiResponse<{
+    loans: Loan[];
+    borrowers: { [borrowerId: string]: any };
+    totalOutstanding: number;
+    totalLoans: number;
+  }>> {
+    const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+    const response = await this.getLoansByCollectionDay(today);
+    
+    if (response.success) {
+      let totalOutstanding = 0;
+      const borrowers: { [borrowerId: string]: any } = {};
+      
+      // Calculate outstanding amounts and group by borrower
+      response.data.forEach(loan => {
+        totalOutstanding += loan.outstandingAmount || 0;
+        
+        if (!borrowers[loan.borrower._id]) {
+          borrowers[loan.borrower._id] = {
+            ...loan.borrower,
+            loans: []
+          };
+        }
+        borrowers[loan.borrower._id].loans.push(loan);
+      });
+      
+      return {
+        success: true,
+        data: {
+          loans: response.data,
+          borrowers: borrowers,
+          totalOutstanding,
+          totalLoans: response.data.length,
+        }
+      };
+    }
+    
+    return { 
+      success: false, 
+      data: { loans: [], borrowers: {}, totalOutstanding: 0, totalLoans: 0 }, 
+      error: 'Failed to get collection route' 
+    };
+  }
+
+  async getWeeklyCollectionSchedule(): Promise<ApiResponse<{
+    [day: string]: {
+      loans: Loan[];
+      borrowers: { [borrowerId: string]: any };
+      totalOutstanding: number;
+      totalLoans: number;
+    };
+  }>> {
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const schedule: { [day: string]: { loans: Loan[]; borrowers: { [borrowerId: string]: any }; totalOutstanding: number; totalLoans: number; } } = {};
+    
+    for (const day of days) {
+      const response = await this.getLoansByCollectionDay(day);
+      if (response.success) {
+        let totalOutstanding = 0;
+        const borrowers: { [borrowerId: string]: any } = {};
+        
+        // Calculate outstanding amounts and group by borrower
+        response.data.forEach(loan => {
+          totalOutstanding += loan.outstandingAmount || 0;
+          
+          if (!borrowers[loan.borrower._id]) {
+            borrowers[loan.borrower._id] = {
+              ...loan.borrower,
+              loans: []
+            };
+          }
+          borrowers[loan.borrower._id].loans.push(loan);
+        });
+        
+        schedule[day] = {
+          loans: response.data,
+          borrowers: borrowers,
+          totalOutstanding,
+          totalLoans: response.data.length,
+        };
+      } else {
+        schedule[day] = { loans: [], borrowers: {}, totalOutstanding: 0, totalLoans: 0 };
+      }
+    }
+    
+    return { success: true, data: schedule };
+  }
+
   async getCollectionsByLoan(loanId: string): Promise<ApiResponse<PopulatedCollection[]>> {
     try {
       // First, get all installments for this loan
@@ -454,6 +569,31 @@ class ApiService {
     return this.request<{ message: string }>(`/collections/${id}`, {
       method: 'DELETE',
     });
+  }
+
+  // Payment History
+  async getPaymentHistory(loanId: string): Promise<ApiResponse<Payment[]>> {
+    const endpoint = `/loans/${loanId}/payments`;
+    return this.request<Payment[]>(endpoint);
+  }
+
+  // Daily Backup Management
+  async generateDailyBackup(date?: string): Promise<ApiResponse<any>> {
+    const endpoint = '/backup/daily';
+    const body = date ? { date } : {};
+    return this.request<any>(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async checkBackupStatus(date?: string): Promise<ApiResponse<any>> {
+    const searchParams = new URLSearchParams();
+    if (date) {
+      searchParams.append('date', date);
+    }
+    const endpoint = `/backup/daily?${searchParams.toString()}`;
+    return this.request<any>(endpoint);
   }
 
   // Check if user is authenticated

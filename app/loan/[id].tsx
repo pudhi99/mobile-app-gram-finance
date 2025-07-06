@@ -28,6 +28,7 @@ interface Loan {
   termWeeks: number;
   startDate: string;
   status: 'ACTIVE' | 'COMPLETED' | 'DEFAULTED';
+  collectionDays: string[];
   createdAt: string;
 }
 
@@ -74,6 +75,7 @@ export default function LoanDetailsScreen() {
           termWeeks: apiLoan.termWeeks || 0,
           startDate: apiLoan.startDate || new Date().toISOString(),
           status: apiLoan.status || 'ACTIVE',
+          collectionDays: apiLoan.collectionDays || [],
           createdAt: apiLoan.createdAt || new Date().toISOString(),
         };
         setLoan(convertedLoan);
@@ -428,6 +430,24 @@ export default function LoanDetailsScreen() {
                 {formatDate(loan.createdAt)}
               </Text>
             </View>
+            <View style={styles.detailRow}>
+              <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Collection Days</Text>
+              <View style={styles.collectionDaysContainer}>
+                {loan.collectionDays && loan.collectionDays.length > 0 ? (
+                  loan.collectionDays.map((day, index) => (
+                    <View key={index} style={[styles.collectionDayChip, { backgroundColor: theme.primary + '20' }]}>
+                      <Text style={[styles.collectionDayText, { color: theme.primary }]}>
+                        {day.charAt(0).toUpperCase() + day.slice(1)}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={[styles.detailValue, { color: theme.textMuted }]}>
+                    No collection days set
+                  </Text>
+                )}
+              </View>
+            </View>
           </View>
         </View>
 
@@ -437,9 +457,17 @@ export default function LoanDetailsScreen() {
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
               Payment History
             </Text>
-            <TouchableOpacity onPress={handleRecordPayment}>
-              <Ionicons name="add" size={24} color={theme.primary} />
-            </TouchableOpacity>
+            <View style={styles.sectionActions}>
+              <TouchableOpacity 
+                style={styles.viewAllButton}
+                onPress={() => router.push(`/loan/payment-history?loanId=${loan.id}`)}
+              >
+                <Text style={[styles.viewAllText, { color: theme.primary }]}>View All</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleRecordPayment}>
+                <Ionicons name="add" size={24} color={theme.primary} />
+              </TouchableOpacity>
+            </View>
           </View>
           
           {payments.length === 0 ? (
@@ -759,5 +787,32 @@ const styles = StyleSheet.create({
   paymentNotes: {
     fontSize: 14,
     fontStyle: 'italic',
+  },
+  collectionDaysContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  collectionDayChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  collectionDayText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  sectionActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  viewAllButton: {
+    marginRight: 10,
+  },
+  viewAllText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 }); 

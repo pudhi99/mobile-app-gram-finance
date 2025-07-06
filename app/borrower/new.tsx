@@ -17,6 +17,7 @@ interface BorrowerForm {
   aadharNumber: string;
   photo?: string;
   location?: LocationData;
+  collectionDays: string[];
 }
 
 export default function AddBorrowerScreen() {
@@ -27,13 +28,32 @@ export default function AddBorrowerScreen() {
     village: '',
     address: '',
     aadharNumber: '',
+    collectionDays: ['monday'], // Default to Monday
   });
   const [showLocationPicker, setShowLocationPicker] = useState(false);
-  const [errors, setErrors] = useState<Partial<BorrowerForm>>({});
+  const [errors, setErrors] = useState<{
+    name?: string;
+    phone?: string;
+    village?: string;
+    address?: string;
+    aadharNumber?: string;
+    photo?: string;
+    location?: string;
+    collectionDays?: string;
+  }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<BorrowerForm> = {};
+    const newErrors: {
+      name?: string;
+      phone?: string;
+      village?: string;
+      address?: string;
+      aadharNumber?: string;
+      photo?: string;
+      location?: string;
+      collectionDays?: string;
+    } = {};
 
     if (!formData.name.trim()) {
       newErrors.name = 'Name is required';
@@ -41,8 +61,8 @@ export default function AddBorrowerScreen() {
 
     if (!formData.phone.trim()) {
       newErrors.phone = 'Phone number is required';
-    } else if (!/^[0-9+\-\s()]{10,}$/.test(formData.phone)) {
-      newErrors.phone = 'Please enter a valid phone number';
+    } else if (!/^[0-9]{10}$/.test(formData.phone.replace(/\s/g, ''))) {
+      newErrors.phone = 'Please enter a valid 10-digit phone number';
     }
 
     if (!formData.village.trim()) {
@@ -57,6 +77,10 @@ export default function AddBorrowerScreen() {
       newErrors.aadharNumber = 'Aadhar number is required';
     } else if (!/^[0-9]{12}$/.test(formData.aadharNumber.replace(/\s/g, ''))) {
       newErrors.aadharNumber = 'Please enter a valid 12-digit Aadhar number';
+    }
+
+    if (formData.collectionDays.length === 0) {
+      newErrors.collectionDays = 'Please select at least one collection day';
     }
 
     setErrors(newErrors);
@@ -79,7 +103,7 @@ export default function AddBorrowerScreen() {
         photoUrl: formData.photo,
         gpsLat: formData.location?.latitude,
         gpsLng: formData.location?.longitude,
-        collectionDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'], // Default collection days
+        collectionDays: formData.collectionDays,
       };
 
       const response = await apiService.createBorrower(borrowerData);
@@ -106,14 +130,31 @@ export default function AddBorrowerScreen() {
     }
   };
 
-
-
-  const updateFormData = (field: keyof BorrowerForm, value: string | LocationData) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const updateFormData = (field: keyof BorrowerForm, value: string | LocationData | string[]) => {
+    setFormData(prev => {
+      const newData = { ...prev };
+      if (field === 'collectionDays') {
+        newData.collectionDays = Array.isArray(value) ? value : [value as string];
+      } else if (field === 'name' || field === 'phone' || field === 'village' || field === 'address' || field === 'aadharNumber' || field === 'photo') {
+        newData[field] = value as string;
+      } else if (field === 'location') {
+        newData.location = value as LocationData;
+      }
+      return newData;
+    });
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: undefined }));
     }
+  };
+
+  const toggleCollectionDay = (day: string) => {
+    const currentDays = formData.collectionDays;
+    const newDays = currentDays.includes(day)
+      ? currentDays.filter(d => d !== day)
+      : [...currentDays, day];
+    
+    updateFormData('collectionDays', newDays);
   };
 
   const formatAadharNumber = (value: string) => {
@@ -124,6 +165,16 @@ export default function AddBorrowerScreen() {
     if (digits.length <= 8) return `${digits.slice(0, 4)} ${digits.slice(4)}`;
     return `${digits.slice(0, 4)} ${digits.slice(4, 8)} ${digits.slice(8, 12)}`;
   };
+
+  const collectionDays = [
+    { key: 'monday', label: 'Monday' },
+    { key: 'tuesday', label: 'Tuesday' },
+    { key: 'wednesday', label: 'Wednesday' },
+    { key: 'thursday', label: 'Thursday' },
+    { key: 'friday', label: 'Friday' },
+    { key: 'saturday', label: 'Saturday' },
+    { key: 'sunday', label: 'Sunday' },
+  ];
 
   const formFields = [
     {
@@ -300,6 +351,48 @@ export default function AddBorrowerScreen() {
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
               </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* Collection Days Section */}
+        <View style={styles.formSection}>
+          <View style={styles.fieldContainer}>
+            <View style={styles.fieldHeader}>
+              <View style={[styles.fieldIcon, { backgroundColor: theme.primary + '20' }]}>
+                <Ionicons name="calendar" size={16} color={theme.primary} />
+              </View>
+              <Text style={[styles.fieldLabel, { color: theme.text }]}>
+                Collection Days
+              </Text>
+            </View>
+            <View style={styles.collectionDaysContainer}>
+              {collectionDays.map((day) => (
+                <TouchableOpacity
+                  key={day.key}
+                  style={[
+                    styles.collectionDayButton,
+                    {
+                      backgroundColor: formData.collectionDays.includes(day.key)
+                        ? theme.primary + '10'
+                        : theme.background,
+                      borderColor: formData.collectionDays.includes(day.key)
+                        ? theme.primary
+                        : theme.border,
+                    },
+                  ]}
+                  onPress={() => toggleCollectionDay(day.key)}
+                >
+                  <Text style={[styles.collectionDayText, { color: formData.collectionDays.includes(day.key) ? theme.primary : theme.text }]}>
+                    {day.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {errors.collectionDays && (
+              <Text style={[styles.errorText, { color: theme.error }]}>
+                {errors.collectionDays}
+              </Text>
             )}
           </View>
         </View>
@@ -494,5 +587,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 2,
     marginLeft: 12,
+  },
+  collectionDaysContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+    marginTop: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0', // Default border color
+  },
+  collectionDayButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    marginVertical: 4,
+    marginHorizontal: 8,
+    borderWidth: 1,
+  },
+  collectionDayText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 }); 

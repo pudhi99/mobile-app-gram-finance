@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeContext } from '@/contexts/ThemeContext';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { apiService, Borrower as ApiBorrower, CreateLoanData } from '@/lib/api';
 import { config } from '@/lib/config';
 
@@ -30,18 +30,28 @@ interface LoanForm {
   disbursedAmount: string;
   termWeeks: string;
   startDate: string;
+  collectionDays: string[];
 }
 
 export default function NewLoanScreen() {
   const { theme } = useThemeContext();
+  const { borrowerId } = useLocalSearchParams<{ borrowerId?: string }>();
   const [formData, setFormData] = useState<LoanForm>({
     borrowerId: '',
     principalAmount: '',
     disbursedAmount: '',
     termWeeks: '',
     startDate: new Date().toISOString().split('T')[0], // Today's date
+    collectionDays: ['monday'], // Default to Monday
   });
-  const [errors, setErrors] = useState<Partial<LoanForm>>({});
+  const [errors, setErrors] = useState<{
+    borrowerId?: string;
+    principalAmount?: string;
+    disbursedAmount?: string;
+    termWeeks?: string;
+    startDate?: string;
+    collectionDays?: string;
+  }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [borrowers, setBorrowers] = useState<Borrower[]>([]);
   const [isLoadingBorrowers, setIsLoadingBorrowers] = useState(false);
@@ -50,6 +60,13 @@ export default function NewLoanScreen() {
   useEffect(() => {
     loadBorrowers();
   }, []);
+
+  // Update form data when borrowerId changes
+  useEffect(() => {
+    if (borrowerId) {
+      setFormData(prev => ({ ...prev, borrowerId: String(borrowerId) }));
+    }
+  }, [borrowerId]);
 
   const loadBorrowers = async () => {
     setIsLoadingBorrowers(true);
@@ -78,7 +95,14 @@ export default function NewLoanScreen() {
   };
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<LoanForm> = {};
+    const newErrors: {
+      borrowerId?: string;
+      principalAmount?: string;
+      disbursedAmount?: string;
+      termWeeks?: string;
+      startDate?: string;
+      collectionDays?: string;
+    } = {};
 
     if (!formData.borrowerId) {
       newErrors.borrowerId = 'Please select a borrower';
@@ -113,6 +137,10 @@ export default function NewLoanScreen() {
 
     if (!formData.startDate) {
       newErrors.startDate = 'Start date is required';
+    }
+
+    if (formData.collectionDays.length === 0) {
+      newErrors.collectionDays = 'Please select at least one collection day';
     }
 
     setErrors(newErrors);
@@ -158,6 +186,7 @@ export default function NewLoanScreen() {
         disbursedAmount,
         termWeeks,
         startDate: formData.startDate,
+        collectionDays: formData.collectionDays,
       };
 
       console.log('Creating loan with data:', loanData);
@@ -198,13 +227,11 @@ export default function NewLoanScreen() {
         });
         
         if (error.message.includes('timeout')) {
-          errorMessage = 'Request timed out. Please check your connection and try again.';
-        } else if (error.message.includes('401')) {
-          errorMessage = 'Authentication failed. Please log in again.';
-        } else if (error.message.includes('400')) {
-          errorMessage = 'Invalid data provided. Please check your inputs.';
-        } else if (error.message.includes('500')) {
-          errorMessage = 'Server error. Please try again later.';
+          errorMessage = 'Request timeout - server not responding. Please try again.';
+        } else if (error.message.includes('Network request failed')) {
+          errorMessage = 'Network error - please check your connection and try again.';
+        } else {
+          errorMessage = error.message;
         }
       }
       
@@ -214,16 +241,32 @@ export default function NewLoanScreen() {
     }
   };
 
-  const updateFormData = (field: keyof LoanForm, value: string) => {
+  // Ensure collectionDays is always an array
+  const updateStringField = (field: 'borrowerId' | 'principalAmount' | 'disbursedAmount' | 'termWeeks' | 'startDate', value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: undefined }));
     }
   };
 
+  const updateCollectionDays = (value: string[]) => {
+    setFormData(prev => ({ ...prev, collectionDays: value }));
+    if (errors.collectionDays) {
+      setErrors(prev => ({ ...prev, collectionDays: undefined }));
+    }
+  };
+
+  const toggleCollectionDay = (day: string) => {
+    const currentDays = formData.collectionDays;
+    const newDays = currentDays.includes(day)
+      ? currentDays.filter(d => d !== day)
+      : [...currentDays, day];
+    
+    updateCollectionDays(newDays);
+  };
+
   const selectBorrower = (borrower: Borrower) => {
-    setFormData(prev => ({ ...prev, borrowerId: borrower.id }));
+    setFormData(prev => ({ ...prev, borrowerId: borrower.id as string }));
     setShowBorrowerPicker(false);
   };
 
@@ -249,8 +292,18 @@ export default function NewLoanScreen() {
 
   const handleCurrencyChange = (field: 'principalAmount' | 'disbursedAmount', value: string) => {
     const digits = value.replace(/\D/g, '');
-    updateFormData(field, digits);
+    updateStringField(field, digits);
   };
+
+  const collectionDays = [
+    { key: 'monday', label: 'Monday' },
+    { key: 'tuesday', label: 'Tuesday' },
+    { key: 'wednesday', label: 'Wednesday' },
+    { key: 'thursday', label: 'Thursday' },
+    { key: 'friday', label: 'Friday' },
+    { key: 'saturday', label: 'Saturday' },
+    { key: 'sunday', label: 'Sunday' },
+  ];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -416,7 +469,7 @@ export default function NewLoanScreen() {
               placeholder="12"
               placeholderTextColor={theme.textMuted}
               value={formData.termWeeks}
-              onChangeText={(text) => updateFormData('termWeeks', text)}
+              onChangeText={(text) => updateStringField('termWeeks', text)}
               keyboardType="numeric"
             />
             {errors.termWeeks && (
@@ -448,11 +501,47 @@ export default function NewLoanScreen() {
               placeholder="YYYY-MM-DD"
               placeholderTextColor={theme.textMuted}
               value={formData.startDate}
-              onChangeText={(text) => updateFormData('startDate', text)}
+              onChangeText={(text) => updateStringField('startDate', text)}
             />
             {errors.startDate && (
               <Text style={[styles.errorText, { color: theme.error }]}>
                 {errors.startDate}
+              </Text>
+            )}
+          </View>
+
+          {/* Collection Days */}
+          <View style={styles.fieldContainer}>
+            <View style={styles.fieldHeader}>
+              <View style={[styles.fieldIcon, { backgroundColor: theme.primary + '20' }]}>
+                <Ionicons name="calendar" size={16} color={theme.primary} />
+              </View>
+              <Text style={[styles.fieldLabel, { color: theme.text }]}>
+                Collection Days
+              </Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.collectionDaysContainer}>
+              {collectionDays.map((day) => (
+                <TouchableOpacity
+                  key={day.key}
+                  style={[
+                    styles.collectionDayButton,
+                    {
+                      backgroundColor: formData.collectionDays.includes(day.key) ? theme.primary + '10' : theme.background,
+                      borderColor: formData.collectionDays.includes(day.key) ? theme.primary : theme.border,
+                    }
+                  ]}
+                  onPress={() => toggleCollectionDay(day.key)}
+                >
+                  <Text style={[styles.collectionDayText, { color: formData.collectionDays.includes(day.key) ? theme.primary : theme.text }]}>
+                    {day.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            {errors.collectionDays && (
+              <Text style={[styles.errorText, { color: theme.error }]}>
+                {errors.collectionDays}
               </Text>
             )}
           </View>
@@ -719,5 +808,21 @@ const styles = StyleSheet.create({
   },
   borrowerItemDetails: {
     fontSize: 14,
+  },
+  collectionDaysContainer: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  collectionDayButton: {
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginHorizontal: 8,
+    borderWidth: 1,
+  },
+  collectionDayText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 }); 
